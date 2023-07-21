@@ -30,3 +30,11 @@ pip install seishmc
 1. Double-Couple solution: [DC example](./examples/HMC.DoubleCouple.py)
 2. Full Moment Tensor solution: [FMT example](./examples/HMC.FullMomentTensor.py)
 
+## Gallery
+### MTUQ vs HMC
+
+1. Double-Couple solution
+![DC](./doc/images/mtuq_vs_hmc_DC.png)
+
+2. Full moment tensor solution 
+![DC](./doc/images/mtuq_vs_hmc_FMT.png)
