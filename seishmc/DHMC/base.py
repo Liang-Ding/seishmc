@@ -105,6 +105,10 @@ class DHMCBase():
         else:
             return int(np.random.uniform(self.min_n_step, self.max_n_step))
 
+    def set_sigma_d(self, sigma_d):
+        '''Set Sigma_d'''
+        self.sigma_d = sigma_d
+
     def _find_solution(self, samples, misfit):
         '''Determine the solution based on the lowest misfit. '''
         self.sol_misfit = np.array(samples[np.where(misfit == np.min(misfit))[0][0]])

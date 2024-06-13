@@ -8,7 +8,7 @@ cd $(dirname ${BASH_SOURCE[0]})
 wd=$PWD
 
 for filename in \
-    SPECFEM3D.tgz;
+    SPECFEM3D.tgz synthetic.tgz;
 do
     cd $wd
     cd $(dirname $filename)

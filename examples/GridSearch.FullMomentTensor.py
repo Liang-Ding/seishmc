@@ -1,31 +1,29 @@
 #!/usr/bin/env python
 
 import os
+import numpy as np
 
-from seishmc.DHMC.dc import DHMC_DC
-from seishmc.visualization.viz_samples_dc import pairplot_samples_DC
-
-from mtuq import read, open_db
+from mtuq import read, open_db, download_greens_tensors
 from mtuq.event import Origin
-from mtuq.graphics import plot_data_greens2, plot_beachball
+from mtuq.graphics import plot_data_greens2, plot_beachball, plot_misfit_lune
+from mtuq.grid import FullMomentTensorGridSemiregular
+from mtuq.grid_search import grid_search
 from mtuq.misfit import Misfit
 from mtuq.process_data import ProcessData
-from mtuq.util import fullpath
+from mtuq.util import fullpath, merge_dicts, save_json
 from mtuq.util.cap import parse_station_codes, Trapezoid
 
-import numpy as np
-# Set the random seed using our lab's room number.
-np.random.seed(511)
+
 
 if __name__=='__main__':
     #
-    # Moment tensor inversion using Hamiltonian Monte Carlo (HMC) sampling
-    # Double-couple solution
+    # Moment tensor inversion using Grid Search
+    # Full moment tensor solution
     #
     # USAGE
-    #   python HMC.DoubleCouple.py
+    #   python GridSearch.FullMomentTensor.py
     #   or
-    #   mpirun -n <NPROC> python HMC.DoubleCouple.py
+    #   mpirun -n <NPROC> python GridSearch.FullMomentTensor.py
     #
 
     #
@@ -38,9 +36,6 @@ if __name__=='__main__':
     event_id    = 'evt11071294'
     model       = 'socal3D'
     taup_model  = 'ak135'
-
-    # output folder
-    saving_dir = '../output/examples/SPECFEM3D/HMC_DC'
 
     #
     # Body and surface wave measurements will be made separately
@@ -98,14 +93,23 @@ if __name__=='__main__':
 
 
     #
-    # Next, we specify the source-time function
+    # Next, we specify the moment tensor grid and source-time function
     #
+
+    grid = FullMomentTensorGridSemiregular(
+        npts_per_axis=20,
+        magnitudes=[4.7, 4.8, 4.9])
 
     wavelet = Trapezoid(
         magnitude=4.8)
 
+
     #
-    # Origin time and location will be fixed.
+    # Origin time and location will be fixed. For an example in which they
+    # vary, see examples/GridSearch.DoubleCouple+Magnitude+Depth.py
+    #
+    # See also Dataset.get_origins(), which attempts to create Origin objects
+    # from waveform metadata
     #
 
     origin = Origin({
@@ -119,6 +123,7 @@ if __name__=='__main__':
 
     from mpi4py import MPI
     comm = MPI.COMM_WORLD
+
 
     #
     # The main I/O work starts now
@@ -135,9 +140,11 @@ if __name__=='__main__':
         data.sort_by_distance()
         stations = data.get_stations()
 
+
         print('Processing data...\n')
         data_bw = data.map(process_bw)
         data_sw = data.map(process_sw)
+
 
         print('Reading Greens functions...\n')
         db = open_db(path_greens, format='SPECFEM3D_SGT', model='socal3D')
@@ -148,6 +155,7 @@ if __name__=='__main__':
         greens_bw = greens.map(process_bw)
         greens_sw = greens.map(process_sw)
 
+
     else:
         stations = None
         data_bw = None
@@ -155,64 +163,83 @@ if __name__=='__main__':
         greens_bw = None
         greens_sw = None
 
+
     stations = comm.bcast(stations, root=0)
     data_bw = comm.bcast(data_bw, root=0)
     data_sw = comm.bcast(data_sw, root=0)
     greens_bw = comm.bcast(greens_bw, root=0)
     greens_sw = comm.bcast(greens_sw, root=0)
 
+
     #
     # The main computational work starts now
     #
 
-    rank = comm.Get_rank()
-    print('Initialize HMC.\n')
-    solver_hmc = DHMC_DC(misfit_bw, data_bw, greens_bw,
-                         misfit_sw, data_sw, greens_sw,
-                         saving_dir, b_save_cache=True,
-                         n_step_cache=500, verbose=True)
+    if comm.rank==0:
+        print('Evaluating body wave misfit...\n')
 
-    # set the range of number of step
-    solver_hmc.set_n_step(min=3, max=10)
+    results_bw = grid_search(
+        data_bw, greens_bw, misfit_bw, origin, grid)
 
-    # set the range of step interval
-    solver_hmc.set_epsilon(min=0.05, max=1.0)
+    if comm.rank==0:
+        print('Evaluating surface wave misfit...\n')
 
-    # set sigma_d
-    solver_hmc.set_sigma_d(0.05)
-
-    # set the number of accepted samples
-    n_sample = 1000
-
-    # set initial solution in degree and Mw
-    # [strike, dip, rake, mag]
-    q0 = np.array([np.random.uniform(0, 360),
-                   np.random.uniform(0, 90),
-                   np.random.uniform(0, 180),
-                   np.random.uniform(4.5, 5.0)])
-    solver_hmc.set_q(q0)
-
-    print('Sampling ...\n')
-    task_id = '%s_DC_HMC_%d' % (event_id, rank)
-    solver_hmc.sampling(n_sample=n_sample, task_id=task_id)
+    results_sw = grid_search(
+        data_sw, greens_sw, misfit_sw, origin, grid)
 
 
-    print('Generating figures...\n')
-    data_file = os.path.join(saving_dir, "%s_samples_N%d.pkl"%(task_id, n_sample))
-    fig_path = os.path.join(saving_dir, task_id)
 
-    pairplot_samples_DC(file_path=data_file, fig_saving_path=fig_path, init_sol=q0)
+    if comm.rank==0:
 
-    # Get the solution
-    best_mt, lune_dict = solver_hmc.get_solution()
+        results = results_bw + results_sw
 
-    fig_path = os.path.join(saving_dir, '%s_waveforms.png' % task_id)
-    plot_data_greens2(fig_path,
-                      data_bw, data_sw, greens_bw, greens_sw, process_bw, process_sw,
-                      misfit_bw, misfit_sw, stations, origin, best_mt, lune_dict)
+        #
+        # Collect information about best-fitting source
+        #
 
-    fig_path = os.path.join(saving_dir, '%s_beachball.png' % task_id)
-    plot_beachball(fig_path, best_mt, stations, origin)
+        # index of best-fitting moment tensor
+        idx = results.source_idxmin()
 
-    MPI.Finalize()
-    print('\nFinished\n')
+        # MomentTensor object
+        best_mt = grid.get(idx)
+
+        # dictionary of lune parameters
+        lune_dict = grid.get_dict(idx)
+
+        # dictionary of Mij parameters
+        mt_dict = best_mt.as_dict()
+
+        merged_dict = merge_dicts(
+            mt_dict, lune_dict, {'M0': best_mt.moment()},
+            {'Mw': best_mt.magnitude()}, origin)
+
+
+        #
+        # Generate figures and save results
+        #
+
+        print('Generating figures...\n')
+
+        plot_data_greens2(event_id+'FMT_waveforms.png',
+            data_bw, data_sw, greens_bw, greens_sw, process_bw, process_sw,
+            misfit_bw, misfit_sw, stations, origin, best_mt, lune_dict)
+
+
+        plot_beachball(event_id+'FMT_beachball.png',
+            best_mt, stations, origin)
+
+
+        plot_misfit_lune(event_id+'FMT_misfit.png', results)
+
+
+        print('Saving results...\n')
+
+        # save best-fitting source
+        save_json(event_id+'FMT_solution.json', merged_dict)
+
+
+        # save misfit surface
+        # results.save(event_id+'FMT_misfit.nc')
+
+
+        print('\nFinished\n')

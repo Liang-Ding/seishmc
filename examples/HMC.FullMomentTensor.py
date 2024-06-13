@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
 import os
-import numpy as np
 
 from seishmc.DHMC.fmt import DHMC_FMT
 from seishmc.visualization.viz_samples_fmt import pairplot_samples_FMT
+
 from mtuq import read, open_db
 from mtuq.event import Origin
 from mtuq.graphics import plot_data_greens2, plot_beachball
@@ -13,22 +13,24 @@ from mtuq.process_data import ProcessData
 from mtuq.util import fullpath
 from mtuq.util.cap import parse_station_codes, Trapezoid
 
-
+import numpy as np
+# Set the random seed using our lab's room number.
+np.random.seed(511)
 
 
 if __name__=='__main__':
     #
-    # Carries out Hamiltonian Monte Carlo (HMC) sampling over full moment tensors
+    # Moment tensor inversion using Hamiltonian Monte Carlo (HMC) sampling
+    # Full moment tensor solution
     #
     # USAGE
+    #   python HMC.FullMomentTensor.py
+    #   or
     #   mpirun -n <NPROC> python HMC.FullMomentTensor.py
     #
-    #
-
 
     #
-    # We will investigate the source process of an Mw~4.8 earthquake using data
-    # from a regional seismic array
+    # Real data example
     #
 
     path_data   = '../data/examples/SPECFEM3D/data/*.[zrt]'
@@ -39,7 +41,7 @@ if __name__=='__main__':
     taup_model  = 'ak135'
 
     # output folder
-    saving_dir = '../output/examples/SPECFEM3D/HMC_FullMomentTensor'
+    saving_dir = '../output/examples/SPECFEM3D/HMC_FMT'
 
     #
     # Body and surface wave measurements will be made separately
@@ -97,7 +99,7 @@ if __name__=='__main__':
 
 
     #
-    # Next, we specify the moment tensor grid and source-time function
+    # Next, we specify the source-time function
     #
 
     wavelet = Trapezoid(
@@ -170,16 +172,19 @@ if __name__=='__main__':
     solver_hmc = DHMC_FMT(misfit_bw, data_bw, greens_bw,
                               misfit_sw, data_sw, greens_sw,
                               saving_dir, b_save_cache=True,
-                              n_step_cache=100, verbose=True)
+                              n_step_cache=500, verbose=True)
 
     # set the range of number of step
-    solver_hmc.set_n_step(min=20, max=50)
+    solver_hmc.set_n_step(min=3, max=10)
 
     # set the range of step interval
     solver_hmc.set_epsilon(min=0.05, max=1.0)
 
+    # set sigma_d
+    solver_hmc.set_sigma_d(0.05)
+
     # set the number of accepted samples
-    n_sample = 500
+    n_sample = 1000
 
     # set initial solution in degree and Mw for FMT solver
     # [strike, dip, rake, mag, co-lat., lune-lon.]
@@ -194,7 +199,6 @@ if __name__=='__main__':
     print('Sampling ...\n')
     task_id = '%s_FMT_HMC_%d' % (event_id, rank)
     solver_hmc.sampling(n_sample=n_sample, task_id=task_id)
-
 
 
     print('Generating figures...\n')

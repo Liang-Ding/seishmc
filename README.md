@@ -1,7 +1,7 @@
 # SEISHMC
 ![SEISHMC](./doc/images/seishmc.png)
 
-SEISHMC is a Python package that uses **Hamiltonian Monte Carlo** (HMC) sampling to invert the full moment tensor of earthquake sources.
+SEISHMC is a Python package that is based on [MTUQ](https://github.com/uafgeotools/mtuq) and utilizes **Hamiltonian Monte Carlo** (HMC) algorithm to invert the full moment tensor of earthquake sources.
 
 
 ## Installation
@@ -25,16 +25,29 @@ pip install -e .
 ```shell
 pip install seishmc
 ```
+## Why HMC?
+We achieve lower waveform misfits in our examples using HMC algorithm.
 
-## Quick start
-1. Double-Couple solution: [DC example](./examples/HMC.DoubleCouple.py)
-2. Full Moment Tensor solution: [FMT example](./examples/HMC.FullMomentTensor.py)
+![DC](./doc/images/misfit_comparison.jpg)
+* DC: Double-Couple solution
+* FMT: Full Moment Tensor solution
+* GS: Grid Search
+* HMC: Hamiltonian Monte Carlo algorithm
+* *(Grid search is performed using [MTUQ](https://github.com/uafgeotools/mtuq) and HMC sampling is carried out with SeisHMC.)*
 
-## Gallery
-### MTUQ vs HMC
+## Examples
+Overview of many examples provided by SeisHMC.
 
-1. Double-Couple solution
-![DC](./doc/images/mtuq_vs_hmc_DC.png)
+|                     Synthetic examples                     |                  Real-data examples                   |
+|:----------------------------------------------------------:|:-----------------------------------------------------:|
+| [GS (DC), syn.](./examples/GridSearch.SYN.DoubleCouple.py) |   [GS (DC)](./examples/GridSearch.DoubleCouple.py)    |
+| [GS (FMT), syn.](./examples/GridSearch.SYN.FullMomentTensor.py)  | [GS (FMT)](./examples/GridSearch.FullMomentTensor.py) |
+|       [HMC (DC), syn.](./examples/HMC.SYN.DoubleCouple.py)       |      [HMC (DC)](./examples/HMC.DoubleCouple.py)       |
+|    [HMC (FMT), syn.](./examples/HMC.SYN.FullMomentTensor.py)     |    [HMC (FMT)](./examples/HMC.FullMomentTensor.py)    |
 
-2. Full moment tensor solution 
-![DC](./doc/images/mtuq_vs_hmc_FMT.png)
+Check the [gallery](./doc/gallery.md) for more figures and result obtained using HMC algorithm. 
+
+
+## Tutorials
+* [From grid search solver to HMC solver](./doc/gs2hmc.md)
+
